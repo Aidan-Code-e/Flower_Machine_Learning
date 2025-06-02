@@ -53,7 +53,7 @@ def load_data(path:str)->np.ndarray:
 
     return np.array(dataset, dtype=object)
 
-def split_data(X:np.ndarray, Y:np.ndarray | None, train_fraction:float, randomize=False, eval_set=True)-> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+def split_data(X:np.ndarray, Y:np.ndarray, train_fraction:float, randomize=False, eval_set=True)-> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray] | None:
     """
     Split the data into training and testing sets. If eval_set is True, also create
     an evaluation dataset. There should be two outputs if eval_set there should
@@ -92,16 +92,7 @@ def split_data(X:np.ndarray, Y:np.ndarray | None, train_fraction:float, randomiz
         - eval_dataset: The dataset to be used for evalution
     """
 
-    # Number of images taken from each class (multiply by num_of_classes for total eval set length)
-    # eval_size = 50
-    # assert(eval_size%5 == 0) # eval_size must be divisable by 5 (num_of_classes)
-
-    # Making the use of Y optional
-    if Y is not None:
-        dataset = np.stack((X.copy(), Y.copy()), axis=1)
-    else:
-        dataset = X.copy()
-    assert(dataset.shape == (len(X), 2))
+    dataset = np.stack((X.copy(), Y.copy()), axis=1)
 
     dataset[dataset[:, 1].argsort(kind='stable')] # Sort by class for ease of segmentation
 
@@ -114,72 +105,32 @@ def split_data(X:np.ndarray, Y:np.ndarray | None, train_fraction:float, randomiz
         for i in range(0, num_of_classes-1):
             np.random.shuffle(dataset[class_lengths[i]:class_lengths[i+1]])
 
-    if(not eval_set):
-        train_sizes = (class_lengths*train_fraction).round().astype(int)
-        test_sizes  = (class_lengths - train_sizes)
+    train_sizes = (class_lengths*train_fraction).astype(int)
+    test_sizes  = class_lengths - train_sizes
+    if eval_set:
+        test_sizes  = (test_sizes/2).astype(int)
+    eval_sizes  = class_lengths - train_sizes - test_sizes
 
-        class_pos = np.add.accumulate(class_lengths)
-        train_pos = train_sizes.copy()
-        train_pos[1:] += class_pos[:-1]
-        test_pos = train_pos + test_sizes
-        
-        train_sizes_accum = np.add.accumulate(train_sizes)
-        test_sizes_accum  = np.add.accumulate(test_sizes)
+    ordered_sizes = np.vstack((train_sizes, test_sizes, eval_sizes)).flatten('F')
+    positions = np.cumsum(ordered_sizes)
 
-        train_dataset = np.empty((sum(train_sizes), 2), dtype=object)
-        test_dataset  = np.empty((sum(test_sizes), 2), dtype=object)
+    split_datasets = np.split(dataset, positions[:-1]) # don't split at len(dataset) (i.e. positions[-1])
 
-        train_dataset[0 : train_sizes_accum[0]] = dataset[0 : train_pos[0]]
-        test_dataset [0 : test_sizes_accum[0]]  = dataset[train_pos[0] : test_pos[0]]
+    train_dataset = np.concatenate(split_datasets[0::3])
+    test_dataset  = np.concatenate(split_datasets[1::3])
+    eval_dataset  = np.concatenate(split_datasets[2::3])
 
-        for i in range(1, num_of_classes):
-            train_dataset[train_sizes_accum[i-1] : train_sizes_accum[i]] = dataset[class_pos[i-1] : train_pos[i]]
-            test_dataset [test_sizes_accum[i-1] : test_sizes_accum[i]]  = dataset[train_pos[i] : test_pos[i]]
+    # train_dataset, test_dataset, eval_dataset = np.concatenate(split_datasets[np.r_[0::3, 1::3, 2::3]], axis=1) # Not as good way to do it IMO
 
-        # Shuffle between classes
-        if(randomize):
-            np.random.shuffle(train_dataset)
-            np.random.shuffle(test_dataset)
+    # Shuffle between classes
+    if(randomize):
+        np.random.shuffle(train_dataset)
+        np.random.shuffle(test_dataset)
+        np.random.shuffle(eval_dataset)
 
-        return train_dataset, test_dataset
-
-    if(eval_set): # Redundant conditional for clarity
-
-        train_sizes = ((class_lengths)*train_fraction).round().astype(int)
-        test_sizes  = ((class_lengths - train_sizes)/2).round().astype(int)
-        eval_sizes  = class_lengths - train_sizes - test_sizes
-
-        class_pos = np.add.accumulate(class_lengths)
-        train_pos = train_sizes.copy()
-        train_pos[1:] += class_pos[:-1]
-        test_pos = train_pos + test_sizes
-        eval_pos = test_pos + eval_sizes
-
-        train_sizes_accum = np.add.accumulate(train_sizes)
-        test_sizes_accum  = np.add.accumulate(test_sizes)
-        eval_sizes_accum  = np.add.accumulate(eval_sizes)
-
-        train_dataset = np.empty((sum(train_sizes), 2), dtype=object)
-        test_dataset  = np.empty((sum(test_sizes), 2), dtype=object)
-        eval_dataset  = np.empty((sum(eval_sizes), 2), dtype=object)
-
-        train_dataset[0 : train_sizes_accum[0]] = dataset[0 : train_pos[0]]
-        test_dataset [0 : test_sizes_accum[0]]  = dataset[train_pos[0] : test_pos[0]]
-        eval_dataset [0 : eval_sizes_accum[0]]  = dataset[test_pos[0] : eval_pos[0]]
-
-        for i in range(1, num_of_classes):
-            train_dataset[train_sizes_accum[i-1] : train_sizes_accum[i]] = dataset[class_pos[i-1] : train_pos[i]]
-            test_dataset [test_sizes_accum[i-1] : test_sizes_accum[i]]   = dataset[train_pos[i] : test_pos[i]]
-            eval_dataset [eval_sizes_accum[i-1] : eval_sizes_accum[i]]   = dataset[test_pos[i] : eval_pos[i]]
-
-        # Shuffle between classes
-        if(randomize):
-            np.random.shuffle(train_dataset)
-            np.random.shuffle(test_dataset)
-            np.random.shuffle(eval_dataset)
-
+    if eval_set:
         return train_dataset, test_dataset, eval_dataset
-
+    return train_dataset, test_dataset
 
 def load_model():
     '''
@@ -534,7 +485,8 @@ def compare_histories(history_standard, history_accelerated):
 
 if __name__ == '__main__':
     dataset = load_data('small_flower_dataset')
-    print(dataset.shape)
+    split_data(dataset[:, 0], dataset[:, 1], 0.8, eval_set=False)
+
 
 # train_set, test_set, eval_set = split_data(dataset[:, 0], dataset[:, 1], 0.8, randomize=True, eval_set=True)
 
