@@ -15,50 +15,39 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, precision_score, recall_score, f1_score
 
 
-def load_data(path: str) -> np.ndarray:
+def load_data(path:str)->np.ndarray:
     '''
-    Load dataset from a given path into a numpy array.
+    Load in the dataset from its home path. Path should be a string of the path
+    to the home directory the dataset is found in. Should return a numpy array
+    with paired images and class labels.
+    
+    Insert a more detailed description here.
 
-    Each entry in the array contains:
-        - The image as a numpy array
-        - The class label as a string (inferred from folder name)
+    Load dataset from path as numpy array.
 
-    Parameters:
-    - path (str): Path to the root dataset directory. Each subdirectory represents a class.
+    Input:
+        - path: A string of the path to the dataset directory
 
-    Returns:
-    - dataset (np.ndarray): Array of shape (N, 2), where
-        dataset[:, 0] = image arrays
-        dataset[:, 1] = corresponding class labels
+    Output:
+        - dataset: np.ndarray with shape (1000, 2). 
+            - dataset(:, 0): Image data loaded as np.ndarray
+            - dataset(:, 1): Corresponding classnames inferred from data's directory
     '''
     def load_img(dir, filename):
-        return img_to_array(keras.utils.load_img(os.path.join(dir, filename)))
+        return img_to_array(keras.utils.load_img(os.path.join(dir, filename)))  # Hiding long function calls
 
-    valid_extensions = {'.jpg', '.jpeg', '.png', '.bmp'}
+    # I'm doing it this way to ensure classes aren't mismatched
+    class_names = os.listdir(path)
+    sub_dirs    = [os.path.join(path, class_name) for class_name in class_names] 
 
-    class_names = [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
-    sub_dirs = [os.path.join(path, class_name) for class_name in class_names]
+    # Loop class directories then images, loading data with their class name.
+    dataset = [
+               (load_img(sub_dir, filename), class_label)
+               for sub_dir, class_label in zip(sub_dirs, class_names)
+               for filename in os.listdir(sub_dir)                      # returns list in arbitrary order
+               ]
 
-    dataset = []
-    class_counts = {}  # Regular dictionary
-
-    for sub_dir, class_label in zip(sub_dirs, class_names):
-        class_counts[class_label] = 0  # Initialize count
-        for filename in os.listdir(sub_dir):
-            file_path = os.path.join(sub_dir, filename)
-            if os.path.isfile(file_path) and os.path.splitext(filename)[1].lower() in valid_extensions:
-                image = load_img(sub_dir, filename)
-                dataset.append((image, class_label))
-                class_counts[class_label] += 1  # Update count
-
-    # Print image counts per class
-    print("Loaded image counts per class:")
-    for class_label in sorted(class_counts):
-        print(f"  {class_label}: {class_counts[class_label]} images")
-
-    return np.array(dataset, dtype=object)
-
-    # scale from 0 to 1 not 0 to 255
+    return np.array(dataset, dtype=object) # Return as array instead of list
 
 dataset = load_data('small_flower_dataset')
 
