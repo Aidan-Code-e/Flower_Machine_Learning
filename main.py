@@ -1,34 +1,19 @@
 ### LIBRARY IMPORTS ###
 import os
 import numpy as np
-import keras.applications as ka
+
 import keras
+import keras.applications as ka
 from keras.callbacks import EarlyStopping
-from keras.models import Model
+from keras.models import Model, Sequential
 from keras.layers import Dense, GlobalMaxPooling2D
 from keras.optimizers import SGD
+from keras.utils import img_to_array
+
 from PIL import Image
 import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-from sklearn.metrics import precision_score, recall_score, f1_score
-from keras.models import Sequential
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, precision_score, recall_score, f1_score
 
-from packaging.version import Version
-import tensorflow as tf
-if Version(tf.__version__) < Version('2.9'):
-    from keras.preprocessing.image import img_to_array
-else:
-    from keras.utils import img_to_array
-
-def my_team():
-    '''
-    Return the list of the team members of this assignment submission as a list
-    of triplet of the form (student_number, first_name, last_name)
-    
-    '''
-    return [(11074761, "Aidan", "Coady"),(11715910, "Lachlan", "Forbes"),(11202351, "Tri Dung", "Nguyen")]
-
-my_team()
 
 def load_data(path: str) -> np.ndarray:
     '''
