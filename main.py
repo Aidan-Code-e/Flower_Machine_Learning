@@ -206,27 +206,21 @@ def transfer_learning(train_set, eval_set, model: keras.Model, parameters):
     model.compile(optimizer=optimizer,
                   loss='sparse_categorical_crossentropy',
                   metrics=['accuracy'])
-    
-    x_train, y_train = train_set
-    x_val, y_val = eval_set
 
-    early_stop = EarlyStopping(
-        monitor='val_loss',
-        patience=4,
-        min_delta=0.001,  # minimum change to be considered improvement
-        restore_best_weights=True,
-        verbose=1
-    )
+    early_stop = EarlyStopping(monitor='val_loss',
+                               patience=4,
+                               min_delta=0.001, # minimum change to be considered improvement
+                               restore_best_weights=True, 
+                               verbose=1)
 
     # Train the model
-    history = model.fit(x_train, y_train, 
-              validation_data=(x_val, y_val),
-              epochs=20,                            
-              batch_size=32,
-              verbose=1,
-              callbacks=[early_stop]
-            )
-    
+    history = model.fit(*train_set,
+                        validation_data=eval_set, 
+                        epochs=21, 
+                        batch_size=32, 
+                        verbose=1, 
+                        callbacks=[early_stop])
+
     return model, history
 
 # Mapping from class name to index
