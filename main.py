@@ -16,13 +16,7 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, precision_
 
 def load_data(path:str)->np.ndarray:
     '''
-    Load in the dataset from its home path. Path should be a string of the path
-    to the home directory the dataset is found in. Should return a numpy array
-    with paired images and class labels.
-    
-    Insert a more detailed description here.
-
-    Load dataset from path as numpy array.
+    Load dataset from path as numpy array of PIL images.
 
     Input:
         - path: A string of the path to the dataset directory
@@ -38,7 +32,7 @@ def load_data(path:str)->np.ndarray:
 
     def load_img(dir, filename, class_label):
         class_counts[class_label] += 1
-        return keras.utils.load_img(os.path.join(dir, filename)), class_label
+        return keras.utils.load_img(os.path.join(dir, filename)), class_label # keras loads as PIL image
 
     class_names = os.listdir(path)
     sub_dirs    = [os.path.join(path, class_name) for class_name in class_names] 
