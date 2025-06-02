@@ -132,17 +132,13 @@ def split_data(X:np.ndarray, Y:np.ndarray, train_fraction:float, randomize=False
         return train_dataset, test_dataset, eval_dataset
     return train_dataset, test_dataset
 
-def load_model():
+def load_model()-> keras.Model:
     '''
     Load in a model using the tf.keras.applications model and return it.
-    Insert a more detailed description here
     
     Model: MobileNetV2
     '''
 
-    #load_model_dense_layer() used from task 5
-
-    
     #-----Defaults-------#
     # input_shape=None,
     # alpha=1.0,
@@ -154,9 +150,12 @@ def load_model():
     # classifier_activation="softmax",   
     #--------------------#
 
-    return ka.MobileNetV2(weights='imagenet', include_top=True)
+    model = ka.MobileNetV2(weights='imagenet',
+                           include_top=False,
+                           input_shape=(224, 224, 3))
 
-#Task 5
+    return model
+
 def load_model_dense_layer():
     '''
     Load and modify the pre-trained MobileNetV2 model for 5-class flower classification.
@@ -164,8 +163,9 @@ def load_model_dense_layer():
     Returns:
         modified_model: The modified MobileNetV2 model with the new Dense layer.
     '''
-    # Load MobileNetV2 without the top layer (include_top=False)
-    base_model = ka.MobileNetV2(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
+    # Load MobileNetV2 without the top layer
+
+    base_model = load_model()
 
     # Freeze the base model layers
     for layer in base_model.layers:
@@ -193,7 +193,6 @@ def transfer_learning(train_set, eval_set, model: keras.Model, parameters):
         - model: an instance of tf.keras.applications.MobileNetV2
         - parameters: list or tuple of parameters to use during training:
             (learning_rate, momentum, nesterov)
-
 
     Outputs:
         - model : an instance of tf.keras.applications.MobileNetV2
