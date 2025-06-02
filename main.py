@@ -62,10 +62,29 @@ def load_data(path: str) -> np.ndarray:
 
 dataset = load_data('small_flower_dataset')
 
-# %%
 def split_data(X:np.ndarray, Y:np.ndarray | None, train_fraction:float, randomize=False, eval_set=True)-> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray] | None:
     """
+    Split the data into training and testing sets. If eval_set is True, also create
+    an evaluation dataset. There should be two outputs if eval_set there should
+    be three outputs (train, test, eval), otherwise two outputs (train, test).
+    
+    To see what type train, test, and eval should be, refer to the inputs of 
+    transfer_learning().
+    
+    Insert a more detailed description here.
+
     Split the dataset (X, Y) into train, test, and optionally evaluation sets per class.
+    
+    Parameters:
+    - X: numpy array of image data.
+    - Y: numpy array of labels (must match X in length).
+    - train_fraction: proportion of non-eval data used for training (0 < train_fraction < 1).
+    - randomize: if True, shuffles data within each class before splitting.
+    - eval_set: if True, returns a third evaluation set of fixed size (default: True).
+    
+    Insert a more detailed description here.
+
+    NOTE: Soft copying the dataset.
 
     Input:
         - X: numpy array of training data to be split
@@ -81,57 +100,94 @@ def split_data(X:np.ndarray, Y:np.ndarray | None, train_fraction:float, randomiz
         When eval_set==True
         - eval_dataset: The dataset to be used for evalution
     """
-    assert 0 < train_fraction <= 1, "train_fraction must be between 0 and 1"
-    eval_size_per_class = 10  # adjustable
-    
+
+    # Number of images taken from each class (multiply by num_of_classes for total eval set length)
+    # eval_size = 50
+    # assert(eval_size%5 == 0) # eval_size must be divisable by 5 (num_of_classes)
+
+    # Making the use of Y optional
     if Y is not None:
         dataset = np.stack((X.copy(), Y.copy()), axis=1)
     else:
         dataset = X.copy()
+    assert(dataset.shape == (len(X), 2))
 
-    dataset = dataset[dataset[:, 1].argsort(kind='stable')]  # Sort by label
+    dataset[dataset[:, 1].argsort(kind='stable')] # Sort by class for ease of segmentation
 
-    unique_classes, class_counts = np.unique(dataset[:, 1], return_counts=True)
-    num_classes = len(unique_classes)
+    values, class_lengths = np.unique(dataset[:,1], return_counts=True)
+    num_of_classes = len(values)
 
-    # Create class-wise index splits
-    class_start_idx = np.concatenate(([0], np.cumsum(class_counts)[:-1]))
-    train_data, test_data, eval_data = [], [], []
+    # Shuffle images within classes
+    if(randomize):
+        np.random.shuffle(dataset[0:class_lengths[1]])
+        for i in range(0, num_of_classes-1):
+            np.random.shuffle(dataset[class_lengths[i]:class_lengths[i+1]])
 
-    for i in range(num_classes):
-        start = class_start_idx[i]
-        end = start + class_counts[i]
-        class_samples = dataset[start:end]
+    if(not eval_set):
+        train_sizes = (class_lengths*train_fraction).round().astype(int)
+        test_sizes  = (class_lengths - train_sizes)
 
-        if randomize:
-            np.random.shuffle(class_samples)
+        class_pos = np.add.accumulate(class_lengths)
+        train_pos = train_sizes.copy()
+        train_pos[1:] += class_pos[:-1]
+        test_pos = train_pos + test_sizes
+        
+        train_sizes_accum = np.add.accumulate(train_sizes)
+        test_sizes_accum  = np.add.accumulate(test_sizes)
 
-        eval_split = eval_size_per_class if eval_set else 0
-        remaining = class_samples[:-eval_split] if eval_set else class_samples
+        train_dataset = np.empty((sum(train_sizes), 2), dtype=object)
+        test_dataset  = np.empty((sum(test_sizes), 2), dtype=object)
 
-        train_count = int(len(remaining) * train_fraction)
-        test_count = len(remaining) - train_count
+        train_dataset[0 : train_sizes_accum[0]] = dataset[0 : train_pos[0]]
+        test_dataset [0 : test_sizes_accum[0]]  = dataset[train_pos[0] : test_pos[0]]
 
-        train_data.append(remaining[:train_count])
-        test_data.append(remaining[train_count:])
+        for i in range(1, num_of_classes):
+            train_dataset[train_sizes_accum[i-1] : train_sizes_accum[i]] = dataset[class_pos[i-1] : train_pos[i]]
+            test_dataset [test_sizes_accum[i-1] : test_sizes_accum[i]]  = dataset[train_pos[i] : test_pos[i]]
 
-        if eval_set:
-            eval_data.append(class_samples[-eval_split:])
+        # Shuffle between classes
+        if(randomize):
+            np.random.shuffle(train_dataset)
+            np.random.shuffle(test_dataset)
 
-    train_set = np.vstack(train_data)
-    test_set = np.vstack(test_data)
+        return train_dataset, test_dataset
 
-    if randomize:
-        np.random.shuffle(train_set)
-        np.random.shuffle(test_set)
+    if(eval_set): # Redundant conditional for clarity
 
-    if eval_set:
-        eval_set = np.vstack(eval_data)
-        if randomize:
-            np.random.shuffle(eval_set)
-        return train_set, test_set, eval_set
+        train_sizes = ((class_lengths)*train_fraction).round().astype(int)
+        test_sizes  = ((class_lengths - train_sizes)/2).round().astype(int)
+        eval_sizes  = class_lengths - train_sizes - test_sizes
 
-    return train_set, test_set
+        class_pos = np.add.accumulate(class_lengths)
+        train_pos = train_sizes.copy()
+        train_pos[1:] += class_pos[:-1]
+        test_pos = train_pos + test_sizes
+        eval_pos = test_pos + eval_sizes
+
+        train_sizes_accum = np.add.accumulate(train_sizes)
+        test_sizes_accum  = np.add.accumulate(test_sizes)
+        eval_sizes_accum  = np.add.accumulate(eval_sizes)
+
+        train_dataset = np.empty((sum(train_sizes), 2), dtype=object)
+        test_dataset  = np.empty((sum(test_sizes), 2), dtype=object)
+        eval_dataset  = np.empty((sum(eval_sizes), 2), dtype=object)
+
+        train_dataset[0 : train_sizes_accum[0]] = dataset[0 : train_pos[0]]
+        test_dataset [0 : test_sizes_accum[0]]  = dataset[train_pos[0] : test_pos[0]]
+        eval_dataset [0 : eval_sizes_accum[0]]  = dataset[test_pos[0] : eval_pos[0]]
+
+        for i in range(1, num_of_classes):
+            train_dataset[train_sizes_accum[i-1] : train_sizes_accum[i]] = dataset[class_pos[i-1] : train_pos[i]]
+            test_dataset [test_sizes_accum[i-1] : test_sizes_accum[i]]   = dataset[train_pos[i] : test_pos[i]]
+            eval_dataset [eval_sizes_accum[i-1] : eval_sizes_accum[i]]   = dataset[test_pos[i] : eval_pos[i]]
+
+        # Shuffle between classes
+        if(randomize):
+            np.random.shuffle(train_dataset)
+            np.random.shuffle(test_dataset)
+            np.random.shuffle(eval_dataset)
+
+        return train_dataset, test_dataset, eval_dataset
 
 train_set, test_set, eval_set = split_data(dataset[:, 0], dataset[:, 1], 0.8, randomize=True, eval_set=True)
 
