@@ -14,7 +14,6 @@ from PIL import Image
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, precision_score, recall_score, f1_score
 
-
 def load_data(path:str)->np.ndarray:
     '''
     Load in the dataset from its home path. Path should be a string of the path
@@ -33,23 +32,32 @@ def load_data(path:str)->np.ndarray:
             - dataset(:, 0): Image data loaded as np.ndarray
             - dataset(:, 1): Corresponding classnames inferred from data's directory
     '''
-    def load_img(dir, filename):
-        return img_to_array(keras.utils.load_img(os.path.join(dir, filename)))  # Hiding long function calls
 
-    # I'm doing it this way to ensure classes aren't mismatched
+    from collections import defaultdict
+    class_counts = defaultdict(int)
+
+    def load_img(dir, filename, class_label):
+        class_counts[class_label] += 1
+        return keras.utils.load_img(os.path.join(dir, filename)), class_label
+
     class_names = os.listdir(path)
     sub_dirs    = [os.path.join(path, class_name) for class_name in class_names] 
 
+    valid_extensions = {'.jpg', '.jpeg', '.png', '.bmp'}
+
     # Loop class directories then images, loading data with their class name.
     dataset = [
-               (load_img(sub_dir, filename), class_label)
+               (load_img(sub_dir, filename, class_label))
                for sub_dir, class_label in zip(sub_dirs, class_names)
-               for filename in os.listdir(sub_dir)                      # returns list in arbitrary order
+               for filename in os.listdir(sub_dir)
+               if os.path.splitext(filename)[-1] in valid_extensions
                ]
 
-    return np.array(dataset, dtype=object) # Return as array instead of list
+    # Print out class counts
+    for class_label, count in class_counts.items():
+        print(f"{class_label}:{count} images")
 
-dataset = load_data('small_flower_dataset')
+    return np.array(dataset, dtype=object)
 
 def split_data(X:np.ndarray, Y:np.ndarray | None, train_fraction:float, randomize=False, eval_set=True)-> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray] | None:
     """
@@ -178,7 +186,6 @@ def split_data(X:np.ndarray, Y:np.ndarray | None, train_fraction:float, randomiz
 
         return train_dataset, test_dataset, eval_dataset
 
-train_set, test_set, eval_set = split_data(dataset[:, 0], dataset[:, 1], 0.8, randomize=True, eval_set=True)
 
 def load_model():
     '''
@@ -204,10 +211,6 @@ def load_model():
 
     return ka.MobileNetV2(weights='imagenet', include_top=True)
 
-
-
-model = load_model()
-
 #Task 5
 def load_model_dense_layer():
     '''
@@ -232,7 +235,6 @@ def load_model_dense_layer():
 
     return modified_model
 
-modified_model = load_model_dense_layer()
 
 def transfer_learning(train_set, eval_set, model: keras.Model, parameters):
     '''
@@ -336,19 +338,7 @@ def preprocess_data(dataset):
     print(f"Processed Labels Shape: {labels.shape}")
     return images, labels
 
-# Preprocess train and evaluation sets
-train_set = preprocess_data(train_set)
-eval_set = preprocess_data(eval_set)
-
-# Train the model
-parameters = (0.01, 0.0, False)
-trained_model, history = transfer_learning(train_set, eval_set, modified_model, parameters)
-trained_model.evaluate(eval_set[0], eval_set[1]) 
-
-history_standard = history
-
 #Early stopping prevents overfitting and saves time  
-
 def plot_training_history(history):
     # Retrieve metrics
     acc = history.history['accuracy']
@@ -381,77 +371,6 @@ def plot_training_history(history):
 
     plt.tight_layout()
     plt.show()
-
-# Call the function
-plot_training_history(history)
-
-def plot_comparison(histories, metric='accuracy'):
-    plt.figure(figsize=(10, 6))
-    
-    for lr, history in histories.items():
-        if metric == 'accuracy':
-            plt.plot(history.history[metric], label=f'Train Acc (lr={lr})')
-            plt.plot(history.history[f'val_{metric}'], label=f'Val Acc (lr={lr})', linestyle='--')
-        elif metric == 'loss':
-            plt.plot(history.history[metric], label=f'Train Loss (lr={lr})')
-            plt.plot(history.history[f'val_{metric}'], label=f'Val Loss (lr={lr})', linestyle='--')
-        else:
-            plt.plot(history.history[metric], label=f'Train {metric.title()} (lr={lr})')
-            plt.plot(history.history[f'val_{metric}'], label=f'Val {metric.title()} (lr={lr})', linestyle='--')
-    
-    plt.title(f'Training & Validation {metric.title()} for Different Learning Rates')
-    plt.xlabel('Epochs')
-    plt.ylabel(metric.title())
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-learning_rates = [0.1, 0.01, 0.001, 0.015] #0.015 had the most optimal performance
-
-histories = {}
-models = {}
-
-for lr in learning_rates:
-    print(f"\nTraining with learning rate = {lr}")
-    model = load_model_dense_layer()  # reload model each time to reset weights
-    parameters = (lr, 0.0, False)
-    trained_model, history = transfer_learning(train_set, eval_set, model, parameters)
-    models[lr] = trained_model
-    histories[lr] = history
-
-plot_comparison(histories, metric='accuracy')
-plot_comparison(histories, metric='loss')
-
-
-best_model = models[0.015]
-
-# Predict on test data
-x_test, y_test = preprocess_data(test_set)
-y_pred = best_model.predict(x_test)
-y_pred_classes = np.argmax(y_pred, axis=1)
-
-# Automatically detect labels that are present
-unique_labels = np.unique(np.concatenate((y_test, y_pred_classes)))
-class_names = ["daisy", "dandelion", "rose", "sunflower", "tulip"]
-label_names = [class_names[i] for i in unique_labels]
-
-# Compute and plot confusion matrix
-cm = confusion_matrix(y_test, y_pred_classes, labels=unique_labels)
-disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=label_names)
-disp.plot(cmap=plt.cm.Blues, xticks_rotation=45)
-plt.title("Confusion Matrix - Test Dataset")
-plt.tight_layout()
-plt.show()
- 
-## Your code
-precision = precision_score(y_test, y_pred_classes, average=None)
-recall = recall_score(y_test, y_pred_classes, average=None)
-f1 = f1_score(y_test, y_pred_classes, average=None)
-
-print("precision: ", precision)
-print("recall: ", recall)
-print("f1: ", f1)
 
 def k_fold_validation(features: np.ndarray, ground_truth:np.ndarray, classifier: keras.Model, k=3):
     '''
@@ -531,153 +450,7 @@ def k_fold_validation(features: np.ndarray, ground_truth:np.ndarray, classifier:
     
     return avg_metrics, sigma_metrics
 
-# %%
-dataset = load_data('small_flower_dataset')
-
-model = load_model_dense_layer()
-
-model.compile(optimizer=SGD(learning_rate=0.01, momentum=0.0, nesterov=False),
-                loss='sparse_categorical_crossentropy',
-                metrics=['accuracy'])
-
-avg_metrics, sigma_metrics = k_fold_validation(dataset[:, 0], dataset[:, 1], model, k=3)
-
-precision_1 = avg_metrics[0]
-recall_1 = avg_metrics[1]
-f1_1 = avg_metrics[2]
-
-std_precision_1 = sigma_metrics[0]
-std_recall_1 = sigma_metrics[1]
-std_f1_1 = sigma_metrics[2]
-
-avg_metrics, sigma_metrics = k_fold_validation(dataset[:, 0], dataset[:, 1], model, k=5)
-
-precision_2 = avg_metrics[0]
-recall_2 = avg_metrics[1]
-f1_2 = avg_metrics[2]
-
-std_precision_2 = sigma_metrics[0]
-std_recall_2 = sigma_metrics[1]
-std_f1_2 = sigma_metrics[2]
-
-avg_metrics, sigma_metrics = k_fold_validation(dataset[:, 0], dataset[:, 1], model, k=10)
-
-precision_3 = avg_metrics[0]
-recall_3 = avg_metrics[1]
-f1_3 = avg_metrics[2]
-
-std_precision_3 = sigma_metrics[0]
-std_recall_3 = sigma_metrics[1]
-std_f1_3 = sigma_metrics[2]
-
-print(f"Average precision (K = 2): {precision_1}")
-print(f"Average recall (K = 2): {recall_1}")
-print(f"Average f1 (K = 2): {f1_1}")
-
-print(f"Precision sigma (K = 2): {std_precision_1}")
-print(f"Recall sigma (K = 2): {std_recall_1}")
-print(f"F1 sigma (K = 2): {std_f1_1}")
-
-print(f"Average precision (K = 3): {precision_2}")
-print(f"Average recall (K = 3): {recall_2}")
-print(f"Average f1 (K = 3): {f1_2}")
-
-print(f"Precision sigma (K = 3): {std_precision_2}")
-print(f"Recall sigma (K = 3): {std_recall_2}")
-print(f"F1 sigma (K = 3): {std_f1_2}")
-
-print(f"Average precision (K = 5): {precision_3}")
-print(f"Average recall (K = 5): {recall_3}")
-print(f"Average f1 (K = 5): {f1_3}")
-
-print(f"Precision sigma (K = 5): {std_precision_3}")
-print(f"Recall sigma (K = 5): {std_recall_3}")
-print(f"F1 sigma (K = 5): {std_f1_3}")
-
-
-classes = ['Daisy', 'Dandelion', 'Roses', 'Sunflowers', 'Tulips']
-
-# Bar width and positions
-bar_width = 0.25
-x = np.arange(len(classes))
-
-# Data with stds
-data = [
-    (precision_1, precision_2, precision_3, std_precision_1, std_precision_2, std_precision_3),
-    (recall_1, recall_2, recall_3, std_recall_1, std_recall_2, std_recall_3),
-    (f1_1, f1_2, f1_3, std_f1_1, std_f1_2, std_f1_3),
-]
-
-fig, axs = plt.subplots(1, 3, figsize=(18, 6))
-metrics = ['Precision', 'Recall', 'F1 Score']
-
-# Plot with error bars
-for i, ax in enumerate(axs):
-    d1, d2, d3, std1, std2, std3 = data[i]
-    ax.bar(x - bar_width, d1, yerr=std1, width=bar_width, label='K=2', capsize=5)
-    ax.bar(x, d2, yerr=std2, width=bar_width, label='K=3', capsize=5)
-    ax.bar(x + bar_width, d3, yerr=std3, width=bar_width, label='K=5', capsize=5)
-    ax.set_title(f'{metrics[i]} (with Std Dev)')
-    ax.set_xticks(x)
-    ax.set_xticklabels(classes)
-    ax.set_ylim(0.3, 0.95)
-    ax.legend()
-    ax.grid(axis='y')
-
-plt.tight_layout()
-plt.show()
-
-momentum_values = [0.003, 0.06, 0.9]
-
-best_learning_rate = 0.015
-
-momentum_histories = {}
-momentum_models = {}
-
-for m in momentum_values:
-    print(f"\nTraining with learning rate = {best_learning_rate}, momentum = {m}")
-    model = load_model_dense_layer()  # Reload base model to reset weights
-    parameters = (best_learning_rate, m, False)  # Nesterov = False
-    trained_model, history = transfer_learning(train_set, eval_set, model, parameters)
-    momentum_models[m] = trained_model
-    momentum_histories[m] = history
-
-def plot_momentum_comparison(histories, metric='accuracy'):
-    plt.figure(figsize=(10, 6))
-    for momentum, history in histories.items():
-        plt.plot(history.history[metric], label=f'Train acc (momentum={momentum})')
-        plt.plot(history.history[f'val_{metric}'], label=f'Val acc (momentum={momentum})', linestyle='--')
-    plt.title(f'Training & Validation {metric.title()} for Different Momentum Values (lr=0.01)')
-    plt.xlabel('Epochs')
-    plt.ylabel(metric.title())
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-# Accuracy
-plot_momentum_comparison(momentum_histories, metric='accuracy')
-
-# Loss
-plot_momentum_comparison(momentum_histories, metric='loss')
-
-# Load base model with frozen weights
-base_model = ka.MobileNetV2(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
-base_model.trainable = False
-
-# Create a feature extractor model
-feature_extractor = Model(inputs=base_model.input, outputs=base_model.output)
-
-x_train, y_train = train_set
-x_val, y_val = eval_set
-
-
-x_train_features = feature_extractor.predict(x_train, batch_size=32)
-x_val_features = feature_extractor.predict(x_val, batch_size=32)
-
-
 #should be same performance but a 1/10 of the time
-
 def accelerated_learning(x_train_features, y_train, 
                          x_val_features, y_val, 
                          parameters):
@@ -765,13 +538,245 @@ def compare_histories(history_standard, history_accelerated):
     plt.tight_layout()
     plt.show()
 
+if __name__ == '__main__':
+    dataset = load_data('small_flower_dataset')
+    print(dataset.shape)
 
-parameters = (0.01, 0.0, False)  # Example learning rate setup
-model_accelerated, history_accelerated = accelerated_learning(
-    x_train_features, y_train,
-    x_val_features, y_val,
-    parameters
-)
+# train_set, test_set, eval_set = split_data(dataset[:, 0], dataset[:, 1], 0.8, randomize=True, eval_set=True)
 
-#Aim: reduce the time and results similar to task 7
-compare_histories(history_standard, history_accelerated)
+# modified_model = load_model_dense_layer()
+
+# # Preprocess train and evaluation sets
+# train_set = preprocess_data(train_set)
+# eval_set = preprocess_data(eval_set)
+
+# # Train the model
+# parameters = (0.01, 0.0, False)
+# trained_model, history = transfer_learning(train_set, eval_set, modified_model, parameters)
+# trained_model.evaluate(eval_set[0], eval_set[1]) 
+
+# history_standard = history
+
+# # Call the function
+# plot_training_history(history)
+
+# def plot_comparison(histories, metric='accuracy'):
+#     plt.figure(figsize=(10, 6))
+    
+#     for lr, history in histories.items():
+#         if metric == 'accuracy':
+#             plt.plot(history.history[metric], label=f'Train Acc (lr={lr})')
+#             plt.plot(history.history[f'val_{metric}'], label=f'Val Acc (lr={lr})', linestyle='--')
+#         elif metric == 'loss':
+#             plt.plot(history.history[metric], label=f'Train Loss (lr={lr})')
+#             plt.plot(history.history[f'val_{metric}'], label=f'Val Loss (lr={lr})', linestyle='--')
+#         else:
+#             plt.plot(history.history[metric], label=f'Train {metric.title()} (lr={lr})')
+#             plt.plot(history.history[f'val_{metric}'], label=f'Val {metric.title()} (lr={lr})', linestyle='--')
+    
+#     plt.title(f'Training & Validation {metric.title()} for Different Learning Rates')
+#     plt.xlabel('Epochs')
+#     plt.ylabel(metric.title())
+#     plt.legend()
+#     plt.grid(True)
+#     plt.tight_layout()
+#     plt.show()
+
+# learning_rates = [0.1, 0.01, 0.001, 0.015] #0.015 had the most optimal performance
+
+# histories = {}
+# models = {}
+
+# for lr in learning_rates:
+#     print(f"\nTraining with learning rate = {lr}")
+#     model = load_model_dense_layer()  # reload model each time to reset weights
+#     parameters = (lr, 0.0, False)
+#     trained_model, history = transfer_learning(train_set, eval_set, model, parameters)
+#     models[lr] = trained_model
+#     histories[lr] = history
+
+# plot_comparison(histories, metric='accuracy')
+# plot_comparison(histories, metric='loss')
+
+
+# best_model = models[0.015]
+
+# # Predict on test data
+# x_test, y_test = preprocess_data(test_set)
+# y_pred = best_model.predict(x_test)
+# y_pred_classes = np.argmax(y_pred, axis=1)
+
+# # Automatically detect labels that are present
+# unique_labels = np.unique(np.concatenate((y_test, y_pred_classes)))
+# class_names = ["daisy", "dandelion", "rose", "sunflower", "tulip"]
+# label_names = [class_names[i] for i in unique_labels]
+
+# # Compute and plot confusion matrix
+# cm = confusion_matrix(y_test, y_pred_classes, labels=unique_labels)
+# disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=label_names)
+# disp.plot(cmap=plt.cm.Blues, xticks_rotation=45)
+# plt.title("Confusion Matrix - Test Dataset")
+# plt.tight_layout()
+# plt.show()
+ 
+# ## Your code
+# precision = precision_score(y_test, y_pred_classes, average=None)
+# recall = recall_score(y_test, y_pred_classes, average=None)
+# f1 = f1_score(y_test, y_pred_classes, average=None)
+
+# print("precision: ", precision)
+# print("recall: ", recall)
+# print("f1: ", f1)
+
+# dataset = load_data('small_flower_dataset')
+
+# model = load_model_dense_layer()
+
+# model.compile(optimizer=SGD(learning_rate=0.01, momentum=0.0, nesterov=False),
+#                 loss='sparse_categorical_crossentropy',
+#                 metrics=['accuracy'])
+
+# avg_metrics, sigma_metrics = k_fold_validation(dataset[:, 0], dataset[:, 1], model, k=3)
+
+# precision_1 = avg_metrics[0]
+# recall_1 = avg_metrics[1]
+# f1_1 = avg_metrics[2]
+
+# std_precision_1 = sigma_metrics[0]
+# std_recall_1 = sigma_metrics[1]
+# std_f1_1 = sigma_metrics[2]
+
+# avg_metrics, sigma_metrics = k_fold_validation(dataset[:, 0], dataset[:, 1], model, k=5)
+
+# precision_2 = avg_metrics[0]
+# recall_2 = avg_metrics[1]
+# f1_2 = avg_metrics[2]
+
+# std_precision_2 = sigma_metrics[0]
+# std_recall_2 = sigma_metrics[1]
+# std_f1_2 = sigma_metrics[2]
+
+# avg_metrics, sigma_metrics = k_fold_validation(dataset[:, 0], dataset[:, 1], model, k=10)
+
+# precision_3 = avg_metrics[0]
+# recall_3 = avg_metrics[1]
+# f1_3 = avg_metrics[2]
+
+# std_precision_3 = sigma_metrics[0]
+# std_recall_3 = sigma_metrics[1]
+# std_f1_3 = sigma_metrics[2]
+
+# print(f"Average precision (K = 2): {precision_1}")
+# print(f"Average recall (K = 2): {recall_1}")
+# print(f"Average f1 (K = 2): {f1_1}")
+
+# print(f"Precision sigma (K = 2): {std_precision_1}")
+# print(f"Recall sigma (K = 2): {std_recall_1}")
+# print(f"F1 sigma (K = 2): {std_f1_1}")
+
+# print(f"Average precision (K = 3): {precision_2}")
+# print(f"Average recall (K = 3): {recall_2}")
+# print(f"Average f1 (K = 3): {f1_2}")
+
+# print(f"Precision sigma (K = 3): {std_precision_2}")
+# print(f"Recall sigma (K = 3): {std_recall_2}")
+# print(f"F1 sigma (K = 3): {std_f1_2}")
+
+# print(f"Average precision (K = 5): {precision_3}")
+# print(f"Average recall (K = 5): {recall_3}")
+# print(f"Average f1 (K = 5): {f1_3}")
+
+# print(f"Precision sigma (K = 5): {std_precision_3}")
+# print(f"Recall sigma (K = 5): {std_recall_3}")
+# print(f"F1 sigma (K = 5): {std_f1_3}")
+
+
+# classes = ['Daisy', 'Dandelion', 'Roses', 'Sunflowers', 'Tulips']
+
+# # Bar width and positions
+# bar_width = 0.25
+# x = np.arange(len(classes))
+
+# # Data with stds
+# data = [
+#     (precision_1, precision_2, precision_3, std_precision_1, std_precision_2, std_precision_3),
+#     (recall_1, recall_2, recall_3, std_recall_1, std_recall_2, std_recall_3),
+#     (f1_1, f1_2, f1_3, std_f1_1, std_f1_2, std_f1_3),
+# ]
+
+# fig, axs = plt.subplots(1, 3, figsize=(18, 6))
+# metrics = ['Precision', 'Recall', 'F1 Score']
+
+# # Plot with error bars
+# for i, ax in enumerate(axs):
+#     d1, d2, d3, std1, std2, std3 = data[i]
+#     ax.bar(x - bar_width, d1, yerr=std1, width=bar_width, label='K=2', capsize=5)
+#     ax.bar(x, d2, yerr=std2, width=bar_width, label='K=3', capsize=5)
+#     ax.bar(x + bar_width, d3, yerr=std3, width=bar_width, label='K=5', capsize=5)
+#     ax.set_title(f'{metrics[i]} (with Std Dev)')
+#     ax.set_xticks(x)
+#     ax.set_xticklabels(classes)
+#     ax.set_ylim(0.3, 0.95)
+#     ax.legend()
+#     ax.grid(axis='y')
+
+# plt.tight_layout()
+# plt.show()
+
+# momentum_values = [0.003, 0.06, 0.9]
+
+# best_learning_rate = 0.015
+
+# momentum_histories = {}
+# momentum_models = {}
+
+# for m in momentum_values:
+#     print(f"\nTraining with learning rate = {best_learning_rate}, momentum = {m}")
+#     model = load_model_dense_layer()  # Reload base model to reset weights
+#     parameters = (best_learning_rate, m, False)  # Nesterov = False
+#     trained_model, history = transfer_learning(train_set, eval_set, model, parameters)
+#     momentum_models[m] = trained_model
+#     momentum_histories[m] = history
+
+# def plot_momentum_comparison(histories, metric='accuracy'):
+#     plt.figure(figsize=(10, 6))
+#     for momentum, history in histories.items():
+#         plt.plot(history.history[metric], label=f'Train acc (momentum={momentum})')
+#         plt.plot(history.history[f'val_{metric}'], label=f'Val acc (momentum={momentum})', linestyle='--')
+#     plt.title(f'Training & Validation {metric.title()} for Different Momentum Values (lr=0.01)')
+#     plt.xlabel('Epochs')
+#     plt.ylabel(metric.title())
+#     plt.legend()
+#     plt.grid(True)
+#     plt.tight_layout()
+#     plt.show()
+
+# # Accuracy
+# plot_momentum_comparison(momentum_histories, metric='accuracy')
+
+# # Loss
+# plot_momentum_comparison(momentum_histories, metric='loss')
+
+# # Load base model with frozen weights
+# base_model = ka.MobileNetV2(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
+# base_model.trainable = False
+
+# # Create a feature extractor model
+# feature_extractor = Model(inputs=base_model.input, outputs=base_model.output)
+
+# x_train, y_train = train_set
+# x_val, y_val = eval_set
+
+
+# x_train_features = feature_extractor.predict(x_train, batch_size=32)
+# x_val_features = feature_extractor.predict(x_val, batch_size=32)
+
+# parameters = (0.01, 0.0, False)  # Example learning rate setup
+# model_accelerated, history_accelerated = accelerated_learning(
+#     x_train_features, y_train,
+#     x_val_features, y_val,
+#     parameters
+# )
+
+# #Aim: reduce the time and results similar to task 7
+# compare_histories(history_standard, history_accelerated)
