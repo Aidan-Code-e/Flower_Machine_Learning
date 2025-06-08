@@ -223,58 +223,46 @@ def transfer_learning(train_set, eval_set, model: keras.Model, parameters):
 
     return model, history
 
-# Mapping from class name to index
-class_name_to_index = {
-    'daisy': 0,
-    'dandelion': 1,
-    'roses': 2,
-    'sunflowers': 3,
-    'tulips': 4
-}
 
 def preprocess_data(dataset):
     '''
     Resize images to (224, 224, 3), normalize pixel values, and convert class labels to integers.
     
     Parameters:
-        dataset: list of (image, label) pairs
+        dataset: iterable of (image, label) pairs
     
     Returns:
-        (images, labels): Tuple of numpy arrays ready for model input
+        processed dataset: Tuple of numpy arrays ready for model input
     '''
-    processed_images = []
-    processed_labels = []
 
-    for pair in dataset:
-        if len(pair) != 2:
-            print(f"[Warning] Invalid data format: {pair}")
-            continue
+    # Mapping from class name to index
+    class_name_to_index = {
+        'daisy'     : 0,
+        'dandelion' : 1,
+        'roses'     : 2,
+        'sunflowers': 3,
+        'tulips'    : 4
+    }
 
-        image, label = pair
+    def pre_process(data):
+        assert len(data) == 2, "Invalid data format"
+        
+        image, label = data
 
-        # Handle image conversion
+        label_index = class_name_to_index.get(label, -1)
+        assert label_index != -1, f"Unknown label: {label}"
+
         if isinstance(image, np.ndarray):
             image = Image.fromarray(image.astype('uint8'))
 
-        image = image.resize((224, 224))  # Resize image
+        image = image.resize((224, 224))
         image = img_to_array(image, dtype=np.float32) / 255.0  # Normalize image
 
-        # Normalize and validate label
-        label_clean = str(label).strip().lower()
-        label_index = class_name_to_index.get(label_clean, -1)
-        if label_index == -1:
-            print(f"[Warning] Unknown label: {label} (cleaned: '{label_clean}')")
-            continue
+        return image, label_index
 
-        processed_images.append(image)
-        processed_labels.append(label_index)
+    processed_dataset = map(pre_process, dataset) 
 
-    images = np.array(processed_images, dtype=np.float32)
-    labels = np.array(processed_labels, dtype=np.int32)
-
-    print(f"Processed Images Shape: {images.shape}")
-    print(f"Processed Labels Shape: {labels.shape}")
-    return images, labels
+    return processed_dataset
 
 #Early stopping prevents overfitting and saves time  
 def plot_training_history(history):
